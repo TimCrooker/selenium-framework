@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  orchestrator:
+    build:
+      context: .
+      dockerfile: orchestrator/Dockerfile
+    ports:
+      - '8000:8000'
+    depends_on:
+      - mongo
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/app
+    networks:
+      - monitoring
+
+  mongo:
+    image: mongo:4.4.6
+    restart: always
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - monitoring
+
+networks:
+  monitoring:
+
+volumes:
+  mongo-data:

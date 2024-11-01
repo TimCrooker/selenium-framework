@@ -9,3 +9,7 @@ env/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Generated files
+logs/
+screenshots/
