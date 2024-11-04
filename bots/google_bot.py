@@ -6,7 +6,7 @@ from datetime import datetime
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import NoSuchElementException
-from framework.base_bot import BaseBot, measure_latency
+from bots.base_bot import BaseBot, measure_latency
 import logging
 from pymongo import MongoClient
 from bson.objectid import ObjectId
@@ -47,12 +47,15 @@ class GoogleBot(BaseBot):
 
     def run(self):
         try:
+            self.update_run_status('running')
+            # Perform the bot's main functionality
             self.perform_searches()
-        except Exception as e:
-            self.handle_error(e)
-            self.update_run_status('error')
-        else:
+            # If successful, update the status to 'completed'
             self.update_run_status('completed')
+        except Exception as e:
+            # Handle exceptions and update status to 'error'
+            self.update_run_status('error')
+            self.logger.error(f"An error occurred: {e}")
         finally:
             self.teardown()
 

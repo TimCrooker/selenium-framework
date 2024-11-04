@@ -1,20 +1,21 @@
-FROM selenium/standalone-chrome:latest
+# bots/Dockerfile
 
-USER root
+FROM python:3.9-slim
 
-# Install Python and necessary packages
+# Install necessary packages
 RUN apt-get update && \
-    apt-get install -y python3 python3-pip && \
-    pip3 install --no-cache-dir pymongo python-socketio[client]
+    apt-get install -y --no-install-recommends \
+        chromium-driver \
+        && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-# Copy dependencies for the bots
-COPY bots/requirements.txt ./requirements.txt
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Install Python dependencies
+COPY bots/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy bot scripts and framework code
 COPY bots /app/bots
-COPY framework /app/framework
 
-CMD ["python3"]
+WORKDIR /app
+
+# Set the entrypoint to a script that runs the specified bot
+ENTRYPOINT ["python3", "/app/entrypoint.py"]

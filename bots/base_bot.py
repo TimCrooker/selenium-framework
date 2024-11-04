@@ -1,3 +1,5 @@
+import signal
+import sys
 import time
 import logging
 import json
@@ -42,7 +44,13 @@ class BaseBot(ABC):
         os.makedirs(self.screenshot_dir, exist_ok=True)
         os.makedirs(self.log_dir, exist_ok=True)
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.session_data = []  # Collect data for the entire session
+        self.session_data = []
+        signal.signal(signal.SIGTERM, self.handle_termination)
+
+    def handle_termination(self, signum, frame):
+        self.logger.info("Termination signal received. Cleaning up...")
+        self.teardown()
+        sys.exit(0)
 
     def _get_driver(self):
         options = Options()
