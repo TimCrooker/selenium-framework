@@ -1,5 +1,6 @@
 import socketio
-import asyncio
+
+from pydantic import BaseModel
 
 # Create a separate Socket.IO server
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
@@ -27,3 +28,9 @@ async def leave(sid, data):
     if bot_id:
         await sio.leave_room(sid, bot_id)
         print(f"Client {sid} left room {bot_id}")
+
+
+
+
+
+

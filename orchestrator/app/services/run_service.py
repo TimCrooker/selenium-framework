@@ -1,57 +1,125 @@
 from datetime import datetime
-import traceback
-import docker
-import asyncio
+from typing import Optional
 
-from ..database import runs_collection
-from ..services.bot_service import update_bot_status
+from bson import ObjectId
+from pydantic import BaseModel
+from ..models import Run, RunLog
+from ..database import runs_collection, run_logs_collection
 from ..utils.socket_manager import sio
 
-docker_client = docker.DockerClient(base_url='unix://var/run/docker.sock')
+def serialize_run(run: Run):
+    return {
+        "id": str(run["_id"]),
+        "bot_id": run["bot_id"],
+        "status": run["status"],
+        "start_time": run.get("start_time").isoformat() if run.get("start_time") else None,
+        "end_time": run.get("end_time").isoformat() if run.get("end_time") else None
+    }
 
-async def start_bot_container(bot, run_id):
-    try:
-        # Build the image name
-        image_name = "bot-framework:latest"  # Replace with your actual image name
+def serialize_run_log(run_log):
+    return {
+        "id": str(run_log["_id"]),
+        "run_id": run_log["run_id"],
+        "timestamp": run_log["timestamp"],
+        "message": run_log["message"],
+        "screenshot": run_log.get("screenshot"),
+        "payload": run_log.get("payload")
+    }
 
-        # Environment variables for the bot
-        env_vars = {
-            "RUN_ID": run_id,
-            "ORCHESTRATOR_URL": "http://orchestrator:8000",
-            "MONGO_URI": "mongodb://mongo:27017/"
-        }
+async def create_run_entry(bot_id, agent_id):
+    run = {
+        "bot_id": bot_id,
+        "agent_id": agent_id,
+        "status": "starting"
+    }
+    runs_collection.insert_one(run)
 
-				# Build the command to pass the bot script
-        bot_script = bot['script']
-        command = [
-            "--bot_script", f"/app/{bot_script}",
-            "--run_id", run_id
-        ]
+    result = serialize_run(run)
 
-        # Start the container
-        container = docker_client.containers.run(
-            image=image_name,
-            command=command,
-            environment=env_vars,
-            network="selenium-framework_monitoring",
-            detach=True,
-            name=f"bot_{bot['_id']}_{run_id}"
-        )
+    await emit_run_created(result.get('id'))
 
-        # Store container ID in the database for future reference
-        runs_collection.update_one(
-            {"run_id": run_id},
-            {"$set": {"container_id": container.id}},
-            upsert=False
-        )
+    return result
 
-    except Exception as e:
-        print(f"Error in start_bot_container: {e}")
-        traceback.print_exc()
-        await update_bot_status(str(bot['_id']), "error")
+async def update_run(run_id, data: Run):
+    payload = {
+        "status": data.get('status'),
+        "start_time": data.get('start_time'),
+        "end_time": data.get('end_time')
+    }
 
-				# Update the run status to error
-        runs_collection.update_one(
-						{"run_id": run_id},
-						{"$set": {"status": "error", "end_time": datetime.utcnow()}},
-				)
+    runs_collection.update_one(
+        {"_id": ObjectId(run_id)},
+        {"$set": payload}
+    )
+
+    updated_run = serialize_run(runs_collection.find_one({"_id": ObjectId(run_id)}))
+
+    await emit_run_updated(run_id)
+
+    return updated_run
+
+class CreateRunLogEvent(BaseModel):
+    run_id: str
+    message: str
+    screenshot: Optional[str] = None
+    payload: Optional[dict] = None
+async def create_run_event(data: CreateRunLogEvent):
+    run_log = {
+        "run_id": data.get('run_id'),
+        "timestamp": datetime.now(),
+        "message": data.get('message'),
+        "screenshot": data.get('screenshot'),
+        "payload": data.get('payload')
+    }
+    run_logs_collection.insert_one(run_log)
+
+    return serialize_run_log(run_log)
+
+# INCOMING EVENTS
+class RunEvent(BaseModel):
+    run_id: str
+    timestamp: str
+    message: str
+    screenshot: Optional[str] = None
+    payload: Optional[dict] = None
+@sio.on("run_event_created")
+async def run_event_created(sid, data: RunEvent):
+    # save the run event to the database in the run logs collection
+    await create_run_event({
+        "run_id": data.get('run_id'),
+        "timestamp": data.get('timestamp'),
+        "message": data.get('event'),
+        "screenshot": data.get('screenshot'),
+        "payload": data.get('payload')
+    })
+
+# OUTGOING EVENTS
+async def emit_run_event_created(run_log_id):
+  run_log = run_logs_collection.find_one({"_id": ObjectId(run_log_id)})
+  if not run_log:
+    print(f"Run log {run_log_id} not found")
+    return
+
+  serialized_run_log = serialize_run_log(run_log)
+  print(f"EMITTING RUN LOG CREATED")
+  await sio.emit('run_event_created', serialized_run_log)
+
+async def emit_run_created(run_id):
+  run = runs_collection.find_one({"_id": ObjectId(run_id)})
+  if not run:
+    print(f"Run {run_id} not found")
+    return
+
+  serialized_run = serialize_run(run)
+  print(f"EMITTING RUN CREATED")
+  await sio.emit('run_created', serialized_run)
+
+async def emit_run_updated(run_id):
+  run = runs_collection.find_one({"_id": ObjectId(run_id)})
+  if not run:
+    print(f"Run {run_id} not found")
+    return
+
+  serialized_run = serialize_run(run)
+  print(f"EMITTING RUN UPDATE")
+  await sio.emit('run_updated', serialized_run)

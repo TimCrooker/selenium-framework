@@ -13,3 +13,5 @@ Thumbs.db
 # Generated files
 logs/
 screenshots/
+
+.env

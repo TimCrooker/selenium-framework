@@ -3,32 +3,53 @@ version: '3.8'
 services:
   orchestrator:
     build:
-      context: .
-      dockerfile: orchestrator/Dockerfile
+      context: ./orchestrator
+    container_name: orchestrator
     ports:
-      - '8000:8000'
+      - "8000:8000"
+    volumes:
+      - ./orchestrator:/app
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/
+      - PYTHONUNBUFFERED=1
+      - HEARTBEAT_INTERVAL=5
     depends_on:
       - mongo
-    environment:
-      - PYTHONUNBUFFERED=1
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./:/app
     networks:
-      - monitoring
+      - app_network
+
+  agent:
+    build:
+      context: ./agent
+    container_name: agent
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./agent:/app
+    environment:
+      - ORCHESTRATOR_URL=http://orchestrator:8000
+      - AGENT_ID=agent-1
+      - PYTHONUNBUFFERED=1
+      - AGENT_URL=http://agent:9000
+      - HEARTBEAT_INTERVAL=5
+    depends_on:
+      - orchestrator
+    networks:
+      - app_network
 
   mongo:
-    image: mongo:4.4.6
-    restart: always
+    image: mongo:4.4
+    container_name: mongo
     ports:
-      - '27017:27017'
+      - "27017:27017"
     volumes:
-      - mongo-data:/data/db
+      - mongo_data:/data/db
     networks:
-      - monitoring
-
-networks:
-  monitoring:
+      - app_network
 
 volumes:
-  mongo-data:
+  mongo_data:
+
+networks:
+  app_network:
+    driver: bridge

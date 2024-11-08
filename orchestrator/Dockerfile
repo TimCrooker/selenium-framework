@@ -1,14 +1,16 @@
-FROM python:3.9-slim
+# orchestrator/Dockerfile
 
+FROM python:3.9-slim
 WORKDIR /app
 
-# Copy and install dependencies from orchestrator/requirements.txt
-COPY orchestrator/requirements.txt ./requirements.txt
+# Install dependencies
+COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the orchestrator code
-COPY orchestrator /app/orchestrator
+# Copy orchestrator code
+COPY . /app
 
-EXPOSE 8000
+# Set environment variables
+ENV ORCHESTRATOR_URL=http://orchestrator:8000
 
-CMD ["uvicorn", "orchestrator.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
