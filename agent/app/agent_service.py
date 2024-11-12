@@ -11,9 +11,9 @@ async def execute_bot(bot_id, bot_script, run_id):
     """Start executing a bot."""
     await executor.run_bot_script(bot_id, bot_script, run_id)
 
-async def stop_bot(bot_id):
+async def stop_bot(bot_id, run_id):
     """Stop a running bot."""
-    await executor.stop_bot(bot_id)
+    await executor.stop_bot(bot_id, run_id)
 
 async def register_agent():
     """Register the agent with the orchestrator."""
@@ -21,8 +21,8 @@ async def register_agent():
         "agent_id": AGENT_ID,
         "status": "available",
         "resources": {
-            "cpu": "normal",  # Update this based on the agent's actual capabilities
-            "memory": "normal"  # Update this based on the agent's actual capabilities
+            "cpu": "normal",
+            "memory": "normal"
         },
         "public_url": AGENT_URL
     }
@@ -37,7 +37,6 @@ async def send_heartbeat():
     while True:
         try:
             await send_post(f"{ORCHESTRATOR_URL}/agents/{AGENT_ID}/heartbeat", {})
-            await send_agent_log(f"Hearbeat test: {AGENT_ID}")
             print(f"Heartbeat sent from agent {AGENT_ID}")
         except Exception as e:
             print(f"Failed to send heartbeat: {e}")

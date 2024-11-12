@@ -58,7 +58,7 @@ async def get_agent_url(agent_id):
 
 async def find_available_agent():
     """Assign an available agent to a bot."""
-    agent = agents_collection.find_one({"status": "available"})
+    agent = agents_collection.find_one({"last_heartbeat": {"$gt": datetime.now() - timedelta(seconds=HEARTBEAT_INTERVAL * 2)}})
     return agent
 
 async def monitor_agents():

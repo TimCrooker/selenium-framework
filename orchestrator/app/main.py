@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import agents, bots, runs
 from app.utils.socket_manager import sio_app
 from .services.agent_service import monitor_agents
+from .services.scheduler_service import schedule_bot_runs, monitor_queued_runs
 
 # Create a FastAPI app
 app = FastAPI()
@@ -13,7 +14,9 @@ app = FastAPI()
 # Start the agent monitoring task
 @app.on_event("startup")
 async def startup_event():
-		asyncio.create_task(monitor_agents())
+    asyncio.create_task(monitor_agents())
+    asyncio.create_task(schedule_bot_runs())
+    asyncio.create_task(monitor_queued_runs())
 
 # Add CORS middleware to allow cross-origin requests
 app.add_middleware(

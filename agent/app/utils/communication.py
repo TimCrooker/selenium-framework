@@ -24,24 +24,13 @@ async def update_agent_status(status):
     payload = {
         "status": status,
     }
-
-    try:
-        response = requests.post(f"{ORCHESTRATOR_URL}/agents/{AGENT_ID}/status", json=payload)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print(f"Failed to send status update for agent {AGENT_ID}: {e}")
+    await send_post(f"{ORCHESTRATOR_URL}/agents/{AGENT_ID}/status", payload)
 
 async def update_run_status(run_id, status):
     payload = {
         "status": status,
     }
-
-    try:
-        response = requests.post(f"{ORCHESTRATOR_URL}/runs/{run_id}/status", json=payload)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        print(f"Failed to send status update for run {run_id}: {e}")
-
+    await send_post(f"{ORCHESTRATOR_URL}/runs/{run_id}/status", payload)
 
 async def register_agent():
     payload = {
@@ -67,7 +56,7 @@ async def send_run_event(run_id, message, screenshot=None, payload=None):
             "screenshot": screenshot,
             "payload": payload,
         }
-        sio.emit('run_event_created', event_data)
+        sio.emit('run_event', event_data)
     else:
         print("Socket.IO not connected. Event not sent.")
 

@@ -1,48 +1,36 @@
 import time
 import functools
+from typing import Callable, TypeVar, Any
+from ..base_bot import BaseBot
 
-def measure_step(func):
-    """Decorator to measure the execution time of a function and log it."""
+T = TypeVar('T', bound=BaseBot)
+
+def measure_step(func: Callable[[T, Any], Any]) -> Callable[[T, Any], Any]:
+    """Decorator to measure execution time and log detailed performance data."""
     @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
+    async def wrapper(self: T, *args: Any, **kwargs: Any) -> Any:
         step_name = func.__name__
         start_time = time.time()
 
-        # Log start of step
-        self.send_log(f"Started step: {step_name}")
-        self.send_event({
-            "step": step_name,
-            "status": "started",
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ")
-        })
-
         try:
-            result = func(self, *args, **kwargs)
+            result = await func(self, *args, **kwargs)
             end_time = time.time()
             duration = end_time - start_time
 
-            # Log end of step
-            self.send_log(f"Completed step: {step_name} in {duration:.2f} seconds")
-            self.send_event({
-                "step": step_name,
-                "status": "completed",
-                "duration": duration,
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ")
-            })
+            screenshot_base64 = await self.capture_screenshot()
+            message = f"Step {step_name} completed in {duration:.2f} seconds."
+            metrics = await self.capture_system_metrics()
+            payload = {
+                'step_name': step_name,
+                'duration': duration,
+                'metrics': metrics
+            }
+            await self.send_run_event(message=message, screenshot=screenshot_base64, payload=payload)
+
             return result
         except Exception as e:
             end_time = time.time()
             duration = end_time - start_time
-
-            # Log error during step
-            self.send_log(f"Error in step: {step_name}")
-            self.send_event({
-                "step": step_name,
-                "status": "error",
-                "error": str(e),
-                "duration": duration,
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ")
-            })
+            await self.handle_error(e)
             raise e
-
     return wrapper

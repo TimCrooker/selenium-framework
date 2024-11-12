@@ -6,18 +6,19 @@ sio = socketio.Client(
     reconnection=True,
     reconnection_attempts=5,
     reconnection_delay=5,
-    logger=True,  # Enable Socket.IO internal logs for debugging
-    engineio_logger=True  # Enable detailed Engine.IO logs
+    # Disable all logging
+    logger=False,
+    engineio_logger=False
 )
 
 # Define the connection URL for Socket.IO
 SOCKET_IO_URL = f"{ORCHESTRATOR_URL.replace('http', 'ws')}/socket.io"
 
-def connect_socketio():
+async def connect_socketio():
     """Connect the Socket.IO client to the orchestrator."""
     try:
         print(f"Attempting to connect to Socket.IO server at {SOCKET_IO_URL}...")
-        sio.connect(SOCKET_IO_URL)
+        await sio.connect(SOCKET_IO_URL)
         print("Socket.IO connected successfully.")
     except Exception as e:
         print(f"Socket.IO connection failed: {e}")
