@@ -42,7 +42,10 @@ async def update_run_status(run_id: str, status_update: RunStatusUpdate):
     status = status_update.status
     timestamp = datetime.now()
 
-    if status == "running":
+    if status == "queued":
+        await update_run(run_id, UpdateRun(status=status))
+
+    elif status == "starting":
         await update_run(run_id, UpdateRun(
             status=status,
             start_time=timestamp
@@ -85,4 +88,4 @@ async def update_run_status(run_id: str, status_update: RunStatusUpdate):
         )
 
     else:
-      await update_run(run_id, UpdateRun(status=status))
+        await update_run(run_id, UpdateRun(status=status))

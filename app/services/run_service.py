@@ -3,11 +3,13 @@ from typing import Optional
 
 from bson import ObjectId
 from pydantic import BaseModel
-from ..models import Run, RunLog
+
+from app.services.run_log_service import emit_run_event_created, serialize_run_log
+from ..models import Run, SerializedRun
 from ..database import runs_collection, run_logs_collection
 from ..utils.socket_manager import sio
 
-def serialize_run(run: Run):
+def serialize_run(run: Run) -> SerializedRun:
     return {
         "id": str(run["_id"]),
         "bot_id": run["bot_id"],
@@ -17,17 +19,7 @@ def serialize_run(run: Run):
         "end_time": run.get("end_time").isoformat() if run.get("end_time") else None
     }
 
-def serialize_run_log(run_log):
-    return {
-        "id": str(run_log["_id"]),
-        "run_id": run_log["run_id"],
-        "timestamp": run_log["timestamp"].isoformat() if run_log.get("timestamp") else None,
-        "message": run_log["message"],
-        "screenshot": run_log.get("screenshot"),
-        "payload": run_log.get("payload")
-    }
-
-async def create_run_entry(bot_id, status="starting", start_time=None):
+async def create_run_entry(bot_id, status="scheduled", start_time=None):
     run = {
         "bot_id": bot_id,
         "status": status,
@@ -40,6 +32,16 @@ async def create_run_entry(bot_id, status="starting", start_time=None):
     await emit_run_created(result.get('id'))
 
     return result
+
+async def queue_run(bot_id):
+    run = await create_run_entry(bot_id, status="queued")
+
+    return run
+
+async def schedule_run(bot_id, start_time):
+    run = await create_run_entry(bot_id, status="scheduled", start_time=start_time)
+
+    return run
 
 class UpdateRun(BaseModel):
     status: Optional[str] = None
@@ -83,7 +85,8 @@ class RunEvent(BaseModel):
     message: str
     screenshot: Optional[str] = None
     payload: Optional[dict] = None
-@sio.on("run_event")
+
+@sio.on("run_event", namespace='/agent')
 async def run_event(sid, data: RunEvent):
     await create_run_event(
         CreateRunLogEvent(
@@ -94,17 +97,6 @@ async def run_event(sid, data: RunEvent):
         )
     )
 
-# OUTGOING EVENTS
-async def emit_run_event_created(run_log_id):
-    run_log = run_logs_collection.find_one({"_id": ObjectId(run_log_id)})
-    if not run_log:
-        print(f"Run log {run_log_id} not found")
-        return
-
-    serialized_run_log = serialize_run_log(run_log)
-    print(f"EMITTING RUN LOG CREATED")
-    await sio.emit('run_event_created', serialized_run_log, namespace='/ui')
-
 async def emit_run_created(run_id):
     run = runs_collection.find_one({"_id": ObjectId(run_id)})
     if not run:
@@ -112,7 +104,6 @@ async def emit_run_created(run_id):
         return
 
     serialized_run = serialize_run(run)
-    print(f"EMITTING RUN CREATED")
     await sio.emit('run_created', serialized_run, namespace='/ui')
 
 async def emit_run_updated(run_id):
@@ -122,5 +113,4 @@ async def emit_run_updated(run_id):
         return
 
     serialized_run = serialize_run(run)
-    print(f"EMITTING RUN UPDATE")
     await sio.emit('run_updated', serialized_run, namespace='/ui')

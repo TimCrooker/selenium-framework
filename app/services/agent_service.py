@@ -75,7 +75,7 @@ class AgentLogEvent(BaseModel):
     agent_id: str
     log: str
 
-@sio.on('agent_log')
+@sio.on('agent_log', namespace='/agent')
 async def agent_log(sid, data: AgentLogEvent):
     agent_id = data.get('agent_id')
     log_message = data.get('log')

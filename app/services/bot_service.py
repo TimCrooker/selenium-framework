@@ -1,14 +1,16 @@
 import httpx
-from croniter import croniter, CroniterBadCronError
+
 from bson.objectid import ObjectId
 from pymongo.errors import PyMongoError
 
+from app.models import SerializedBot
 from app.services.agent_service import find_available_agent
 from app.services.run_service import UpdateRun, update_run
 from app.database import bots_collection
 from app.utils.socket_manager import sio
+from app.utils.cron import validate_cron_expression
 
-def serialize_bot(bot):
+def serialize_bot(bot) -> SerializedBot:
     return {
         "id": str(bot["_id"]),
         "name": bot["name"],
@@ -16,13 +18,6 @@ def serialize_bot(bot):
         "schedule": bot.get("schedule", ""),
         "created_at": bot.get("created_at").isoformat() if bot.get("created_at") else None
     }
-
-def validate_cron_expression(cron):
-    try:
-        croniter(cron)
-        return True
-    except CroniterBadCronError:
-        return False
 
 async def start_bot_run(bot_id: str, run_id: str):
     bot = bots_collection.find_one({"_id": ObjectId(bot_id)})
@@ -36,6 +31,7 @@ async def start_bot_run(bot_id: str, run_id: str):
     agent = await find_available_agent()
     if not agent:
         print(f"No available agent to run bot {bot_id}")
+        return False
 
     agent_public_url = agent.get("public_url")
     if not agent_public_url:

@@ -1,23 +1,29 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
 from bson.objectid import ObjectId
+from pydantic import BaseModel
+from typing import Optional
 
-from ..models import RegisterBot, BotInDB
+from ..models import BotInDB
 from ..database import bots_collection, runs_collection
-from ..services.agent_service import find_available_agent
-from ..services.bot_service import serialize_bot, start_bot_run, delete_bot, update_bot, validate_cron_expression
-from ..services.run_service import create_run_entry, serialize_run
+from ..services.bot_service import serialize_bot, delete_bot, update_bot, validate_cron_expression
+from ..services.run_service import queue_run, serialize_run
 
 router = APIRouter()
 
-@router.get("/", response_model=List[BotInDB])
+@router.get("/", response_model=list[BotInDB])
 def list_bots():
     bots = list(bots_collection.find())
     return [serialize_bot(bot) for bot in bots]
 
+class RegisterBot(BaseModel):
+    name: str
+    script: str
+    schedule: Optional[str] = None
+
 @router.post("/")
 def register_bot(bot: RegisterBot):
-    bot_dict = bot.dict()
+    bot_dict = bot.model_dump()
     if "schedule" in bot_dict and not validate_cron_expression(bot_dict["schedule"]):
         raise HTTPException(status_code=400, detail="Invalid CRON expression")
     result = bots_collection.insert_one(bot_dict)
@@ -34,14 +40,10 @@ def get_bot(bot_id: str):
 
 @router.post("/{bot_id}/runs")
 async def run_bot(bot_id: str):
-    run = await create_run_entry(bot_id)
+    run = await queue_run(bot_id)
     run_id = run.get('id')
 
-    success = await start_bot_run(bot_id, run_id)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to start bot execution on the agent")
-
-    return {"message": f"Bot {bot_id} is running", "run_id": run_id}
+    return {"message": f"Bot {bot_id} is queued to run", "run_id": run_id}
 
 @router.get("/{bot_id}/runs")
 def get_bot_runs(bot_id: str):

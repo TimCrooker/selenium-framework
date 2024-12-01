@@ -1,14 +1,15 @@
+
 version: '3.8'
 
 services:
   orchestrator:
     build:
-      context: ./orchestrator
+      context: .
     container_name: orchestrator
     ports:
       - "8000:8000"
     volumes:
-      - ./orchestrator:/app
+      - .:/app
     environment:
       - MONGO_URI=mongodb://mongo:27017/
       - PYTHONUNBUFFERED=1
@@ -20,12 +21,12 @@ services:
 
   agent:
     build:
-      context: ./agent
+      context: ../selenium-framework-agent
     container_name: agent
     ports:
       - "9000:9000"
     volumes:
-      - ./agent:/app
+      - ../selenium-framework-agent:/app
     environment:
       - ORCHESTRATOR_URL=http://orchestrator:8000
       - AGENT_ID=agent-1
