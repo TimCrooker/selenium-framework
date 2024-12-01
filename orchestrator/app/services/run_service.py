@@ -103,7 +103,7 @@ async def emit_run_event_created(run_log_id):
 
     serialized_run_log = serialize_run_log(run_log)
     print(f"EMITTING RUN LOG CREATED")
-    await sio.emit('run_event_created', serialized_run_log)
+    await sio.emit('run_event_created', serialized_run_log, namespace='/ui')
 
 async def emit_run_created(run_id):
     run = runs_collection.find_one({"_id": ObjectId(run_id)})
@@ -113,7 +113,7 @@ async def emit_run_created(run_id):
 
     serialized_run = serialize_run(run)
     print(f"EMITTING RUN CREATED")
-    await sio.emit('run_created', serialized_run)
+    await sio.emit('run_created', serialized_run, namespace='/ui')
 
 async def emit_run_updated(run_id):
     run = runs_collection.find_one({"_id": ObjectId(run_id)})
@@ -123,4 +123,4 @@ async def emit_run_updated(run_id):
 
     serialized_run = serialize_run(run)
     print(f"EMITTING RUN UPDATE")
-    await sio.emit('run_updated', serialized_run)
+    await sio.emit('run_updated', serialized_run, namespace='/ui')

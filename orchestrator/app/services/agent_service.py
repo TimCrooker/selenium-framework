@@ -1,4 +1,3 @@
-# agent_service.py
 import asyncio
 
 from datetime import datetime, timedelta
@@ -83,7 +82,7 @@ async def agent_log(sid, data: AgentLogEvent):
     print(f"AGENT Log received for agent {agent_id}: {log_message}")
     await emit_agent_log(agent_id, log_message)
 
-# OUTGOING EVENTS
+# UI EVNET HANDLERS
 class AgentUpdateEvent(BaseModel):
     agent_id: str
     status: Optional[str] = None
@@ -99,8 +98,8 @@ async def emit_agent_update(agent_id: str):
 
     serialized_agent = serialize_agent(agent)
     print(f"EMITTING AGENT UPDATE")
-    await sio.emit('agent_updated', serialized_agent)
+    await sio.emit('agent_updated', serialized_agent, namespace='/ui')
 
 async def emit_agent_log(agent_id: str, log_message: str):
     print(f"EMITTING AGENT LOG")
-    await sio.emit('agent_log_created', {"agent_id": agent_id, "log": log_message})
+    await sio.emit('agent_log_created', {"agent_id": agent_id, "log": log_message}, namespace='/ui')

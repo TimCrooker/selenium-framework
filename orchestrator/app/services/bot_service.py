@@ -3,10 +3,10 @@ from croniter import croniter, CroniterBadCronError
 from bson.objectid import ObjectId
 from pymongo.errors import PyMongoError
 
-from ..services.agent_service import find_available_agent, get_agent_url
-from ..database import bots_collection
-from ..utils.socket_manager import sio
-from .run_service import UpdateRun, update_run
+from app.services.agent_service import find_available_agent
+from app.services.run_service import UpdateRun, update_run
+from app.database import bots_collection
+from app.utils.socket_manager import sio
 
 def serialize_bot(bot):
     return {
@@ -97,8 +97,8 @@ async def update_bot(bot_id, bot_data):
         return False
 
 async def emit_bot_deleted(bot_id):
-    print(f"EMITTING BOT DELETED")
-    await sio.emit('bot_deleted', {"bot_id": bot_id})
+    print("EMITTING BOT DELETED")
+    await sio.emit('bot_deleted', {"bot_id": bot_id}, namespace='/ui')
 
 async def emit_bot_updated(bot_id):
     bot = bots_collection.find_one({"_id": ObjectId(bot_id)})
@@ -107,6 +107,6 @@ async def emit_bot_updated(bot_id):
         return
 
     serialized_bot = serialize_bot(bot)
-    print(f"EMITTING BOT UPDATED")
-    await sio.emit('bot_updated', serialized_bot)
+    print("EMITTING BOT UPDATED")
+    await sio.emit('bot_updated', serialized_bot, namespace='/ui')
 

@@ -1,15 +1,18 @@
 from bots.complex_bot import ComplexBot
 from bots.google_bot import GoogleBot
-from .utils.communication import send_agent_log, send_run_event, update_run_status
+from .utils.communication import update_run_status
 from .utils.config import ORCHESTRATOR_URL
+from .utils.socket_manager import send_agent_log, send_run_event
 
 class BotExecutor:
     def __init__(self):
-        self.running_bots = {}
+        self.current_bot = None
 
     async def run_bot_script(self, bot_id, bot_script, run_id):
-        await update_run_status(run_id, "running")
-
+        if self.current_bot is not None:
+            await send_agent_log("Another bot is already running.")
+            return
+        await send_run_event(run_id, "running")
         await send_agent_log(f"Running bot script: {bot_script}")
 
         try:
@@ -21,7 +24,7 @@ class BotExecutor:
                 await update_run_status(run_id, "error")
                 return
 
-            self.running_bots[run_id] = bot_instance
+            self.current_bot = bot_instance
             await bot_instance.run()
 
             await update_run_status(run_id, "completed")
@@ -34,7 +37,6 @@ class BotExecutor:
             await self.stop_bot(bot_id, run_id)
 
     async def stop_bot(self, bot_id, run_id):
-        """Terminate the running bot."""
-        bot_instance = self.running_bots.pop(run_id, None)
-        if bot_instance:
-            await bot_instance.handle_termination()
+        if self.current_bot:
+            await self.current_bot.handle_termination()
+            self.current_bot = None
