@@ -1,91 +1,63 @@
-from datetime import datetime
-from bson import ObjectId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.models import Run
-
-from ..services.run_service import CreateRunLogEvent, UpdateRun, create_run_event, serialize_run, serialize_run_log, update_run
-from ..database import runs_collection, run_logs_collection
+from app.models import CreateRunEvent, CreateRunLog, ObjectIdStr, RunStatus, SerializedRun, SerializedRunEvent, SerializedRunLog
+from app.services.run_event_service import create_run_event, list_run_events
+from app.services.run_log_service import create_run_log, list_run_logs
+from app.services.run_service import get_run_by_id, list_runs, update_run_status
 
 router = APIRouter()
 
-@router.get("/")
-def get_runs():
-    runs = list(runs_collection.find())
-    return [serialize_run(run) for run in runs]
+@router.get("/", response_model=list[SerializedRun])
+def get_runs() -> list[SerializedRun]:
+    try:
+        return list_runs()
+    except Exception as e:
+        raise e
 
 @router.get("/{run_id}")
-async def get_run(run_id: str):
-    run = runs_collection.find_one({"_id": ObjectId(run_id)})
-    if run:
-        return serialize_run(run)
-    raise HTTPException(status_code=404, detail="Run not found")
+async def get_run(run_id: str) -> SerializedRun:
+    try:
+        return get_run_by_id(run_id)
+    except Exception as e:
+        raise e
 
 @router.get("/{run_id}/logs")
-async def get_run_logs(run_id: str):
-    run = runs_collection.find_one({"_id": ObjectId(run_id)})
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    logs = list(run_logs_collection.find({"run_id": run_id}))
-    return [serialize_run_log(log) for log in logs]
+async def get_run_logs(run_id: str) -> list[SerializedRunLog]:
+    try:
+        return list_run_logs(run_id)
+    except Exception as e:
+        raise e
+
+@router.post("/{run_id}/logs")
+async def add_run_log(run_id: str, data: CreateRunLog) -> SerializedRunLog:
+    try:
+        data.run_id = ObjectIdStr(run_id)
+        return await create_run_log(data)
+    except Exception as e:
+        raise e
+
+@router.get("/{run_id}/events")
+async def get_run_events(run_id: str) -> list[SerializedRunEvent]:
+    try:
+        return list_run_events(run_id)
+    except Exception as e:
+        raise e
+
+@router.post("/{run_id}/events")
+async def add_run_event(run_id: str, event_data: CreateRunEvent) -> SerializedRunEvent:
+    try:
+        event_data.run_id = ObjectIdStr(run_id)
+        return await create_run_event(event_data)
+    except Exception as e:
+        raise e
 
 class RunStatusUpdate(BaseModel):
-    status: str
+    status: RunStatus
 
 @router.post("/{run_id}/status")
-async def update_run_status(run_id: str, status_update: RunStatusUpdate):
-    run = runs_collection.find_one({"_id": ObjectId(run_id)})
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-
-    status = status_update.status
-    timestamp = datetime.now()
-
-    if status == "queued":
-        await update_run(run_id, UpdateRun(status=status))
-
-    elif status == "starting":
-        await update_run(run_id, UpdateRun(
-            status=status,
-            start_time=timestamp
-        ))
-
-        await create_run_event(
-            CreateRunLogEvent(
-                run_id=run_id,
-                message="Run started",
-                payload={"start_time": timestamp.isoformat()}
-            )
-        )
-
-    elif status == "completed":
-        await update_run(run_id, UpdateRun(
-            status=status,
-            end_time=timestamp
-        ))
-
-        await create_run_event(
-            CreateRunLogEvent(
-                run_id=run_id,
-                message="Run completed",
-                payload={"end_time": timestamp.isoformat()}
-            )
-        )
-
-    elif status == "error":
-        await update_run(run_id, UpdateRun(
-            status=status,
-            end_time=timestamp
-        ))
-
-        await create_run_event(
-            CreateRunLogEvent(
-                run_id=run_id,
-                message="Run failed",
-                payload={"end_time": timestamp.isoformat()}
-            )
-        )
-
-    else:
-        await update_run(run_id, UpdateRun(status=status))
+async def post_run_status(run_id: str, status_update: RunStatusUpdate) -> SerializedRun:
+    try:
+        return await update_run_status(run_id, status_update.status)
+    except Exception as e:
+        raise e

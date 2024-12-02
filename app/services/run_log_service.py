@@ -1,38 +1,53 @@
 from datetime import datetime
-from pydantic import BaseModel
+from typing import Any
+
+from fastapi.encoders import jsonable_encoder
+
 from app.database import run_logs_collection
-from app.models import SerializedRunLog
+from app.models import CreateRunLog, SerializedRunLog
 from app.utils.socket_manager import sio
 
-def serialize_run_log(run_log) -> SerializedRunLog:
-    return {
-        "id": str(run_log["_id"]),
-        "run_id": run_log["run_id"],
-        "timestamp": run_log["timestamp"].isoformat() if run_log.get("timestamp") else None,
-        "message": run_log["message"],
-        "screenshot": run_log.get("screenshot"),
-        "payload": run_log.get("payload")
-    }
+def serialize_run_log(run_log: dict[str, Any]) -> SerializedRunLog:
+    return SerializedRunLog(**run_log)
 
-class CreateRunLogEvent(BaseModel):
-    run_id: str
-    message: str
-    screenshot: str = None
-    payload: dict = None
+async def create_run_log(data: CreateRunLog) -> SerializedRunLog:
+    try:
+        payload = data.dict()
+        payload["timestamp"] = datetime.now()
+        result = run_logs_collection.insert_one(payload)
+        log = run_logs_collection.find_one({"_id": result.inserted_id})
+        if not log:
+            raise Exception("Error creating run log")
 
-async def create_run_event(data: CreateRunLogEvent):
-    run_log = data.model_dump()
-    run_log["timestamp"] = datetime.now()
-    run_logs_collection.insert_one(run_log)
+        serialized_run_log = serialize_run_log(log)
+        await emit_run_log(serialized_run_log)
+        return serialized_run_log
+    except Exception as e:
+        # Handle exception
+        raise e
 
-    await emit_run_event_created(run_log["_id"])
+def list_run_logs(run_id: str) -> list[SerializedRunLog]:
+    try:
+        logs = run_logs_collection.find({"run_id": run_id})
+        return [serialize_run_log(log) for log in logs]
+    except Exception as e:
+        # Handle exception
+        raise e
 
-    return serialize_run_log(run_log)
+# EVENT HANDLERS
 
-async def emit_run_event_created(run_log_id):
-    run_log = run_logs_collection.find_one({"_id": run_log_id})
-    if not run_log:
-        return
+@sio.on("run_log", namespace='/agent')
+async def handle_run_log_event(sid: str, data: dict[str, Any]) -> None:
+    print(f"Received 'run_log' event from SID {sid}: {data}")
+    try:
+        log_data = CreateRunLog(**data)
+        await create_run_log(log_data)
+    except Exception as e:
+        print(f"Error handling run log event: {e}")
 
-    serialized_run_log = serialize_run_log(run_log)
-    await sio.emit("run_event_created", serialized_run_log, namespace='/ui')
+# EVENT EMITTERS
+
+async def emit_run_log(run_log: SerializedRunLog) -> None:
+    print(f"Emitting 'run_log' event: {run_log}")
+    data = jsonable_encoder(run_log)
+    await sio.emit("run_log", data, namespace='/ui')

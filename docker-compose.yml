@@ -1,4 +1,3 @@
-
 version: '3.8'
 
 services:
@@ -22,6 +21,7 @@ services:
   agent:
     build:
       context: ../selenium-framework-agent
+    shm_size: '1gb'
     container_name: agent
     ports:
       - "9000:9000"

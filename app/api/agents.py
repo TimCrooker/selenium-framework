@@ -1,55 +1,60 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from app.services.agent_service import agent_heartbeat, register_agent, serialize_agent, update_agent_status
-from app.database import agents_collection
+from app.models import AgentStatusUpdate, CreateAgent, SerializedAgent
+from app.services.agent_service import agent_heartbeat, create_agent, get_agent_by_id, list_agents, list_available_agents, update_agent_status
 
 router = APIRouter()
 
-class AgentRegistration(BaseModel):
-    agent_id: str
-    status: str
-    resources: dict
-    public_url: str
-
-class AgentStatusUpdate(BaseModel):
-    status: str
-
 @router.get("/")
-async def list_agents():
-    agents = list(agents_collection.find())
-    serialized_agents = [serialize_agent(agent) for agent in agents]
-    return {"agents": serialized_agents}
+async def get_agents() -> list[SerializedAgent]:
+    try:
+        return list_agents()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting agents: {e}")
 
 @router.post("/register")
-async def register(agent: AgentRegistration):
-    print(f"Registering agent: {agent.dict()}")
-    success = await register_agent(agent.dict())
-    if success:
-        return {"status": "Agent registered", "agent_id": agent.agent_id}
-    raise HTTPException(status_code=500, detail="Agent registration failed")
+async def register(agent: CreateAgent) -> SerializedAgent:
+    print(agent)
+    try:
+        success = await create_agent(agent)
+        if not success:
+            raise HTTPException(status_code=400, detail="Agent registration failed")
+        return success
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error registering agent: {e}")
 
 @router.get("/available")
-async def available_agents():
-    agents = list(agents_collection.find({"status": "available"}))
-    serialized_agents = [serialize_agent(agent) for agent in agents]
-    return {"available_agents": serialized_agents}
+async def available_agents() -> list[SerializedAgent]:
+    try:
+        return list_available_agents()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting available agents: {e}")
 
 @router.get("/{agent_id}")
-async def get_agent(agent_id: str):
-    agent = agents_collection.find_one({"agent_id": agent_id})
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    return serialize_agent(agent)
+async def get_agent(agent_id: str) -> SerializedAgent:
+    try:
+        agent = get_agent_by_id(agent_id)
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return agent
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting agent: {e}")
 
 @router.post("/{agent_id}/heartbeat")
-async def heartbeat(agent_id: str):
-    await agent_heartbeat(agent_id)
-    return {"status": "Heartbeat received"}
+async def heartbeat(agent_id: str) -> SerializedAgent:
+    try:
+        updatedAgent = await agent_heartbeat(agent_id)
+        if not updatedAgent:
+            raise HTTPException(status_code=404, detail="Agent heartbeat failed")
+        return updatedAgent
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error handling heartbeat: {e}")
 
 @router.post("/{agent_id}/status")
-async def update_agent_status_post(agent_id: str, status_update: AgentStatusUpdate):
-    agent = agents_collection.find_one({"agent_id": agent_id})
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
-    await update_agent_status(agent_id, status_update.status)
-    return {"status": "Agent status updated", "agent_id": agent_id}
+async def update_agent_status_post(agent_id: str, status_update: AgentStatusUpdate) -> SerializedAgent:
+    try:
+        agent = await update_agent_status(agent_id, status_update.status)
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return agent
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating agent status: {e}")

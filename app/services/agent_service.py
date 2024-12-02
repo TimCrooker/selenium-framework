@@ -1,105 +1,169 @@
 import asyncio
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, NoReturn, Optional
 
 from pydantic import BaseModel
+from fastapi.encoders import jsonable_encoder
 
-from ..models import Agent
+from ..models import AgentLogEvent, AgentStatus, CreateAgent, SerializedAgent, UpdateAgent
 from ..utils.socket_manager import sio
 from ..utils.config import HEARTBEAT_INTERVAL
 from ..database import agents_collection
+import logging
 
-def serialize_agent(agent: Agent):
-    return {
-      "id": str(agent["_id"]),
-      "agent_id": agent["agent_id"],
-      "status": agent["status"],
-      "resources": agent["resources"],
-      "public_url": agent.get("public_url"),
-      "last_heartbeat": agent.get("last_heartbeat").isoformat() if agent.get("last_heartbeat") else None
-    }
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
-async def register_agent(agent_data):
+def serialize_agent(agent: dict[str, Any]) -> SerializedAgent:
+    return SerializedAgent(**agent)
+
+async def create_agent(agent_data: CreateAgent) -> Optional[SerializedAgent]:
     try:
+        payload = agent_data.dict()
+        payload["last_heartbeat"] = datetime.now()
         agents_collection.update_one(
-            {"agent_id": agent_data["agent_id"]},
-            {"$set": {
-              "status": agent_data["status"],
-              "resources": agent_data["resources"],
-              "public_url": agent_data["public_url"],
-              "last_heartbeat": datetime.now()}
-            },
+            {"agent_id": agent_data.agent_id},
+            {"$set": payload},
             upsert=True
         )
-        return True
+        agent = agents_collection.find_one({"agent_id": agent_data.agent_id})
+
+        if not agent:
+            raise Exception("Error registering agent")
+
+        serialized_agent = serialize_agent(agent)
+        await emit_agent_update(serialized_agent)
+        return serialized_agent
     except Exception as e:
         print(f"Error registering agent: {e}")
-        return False
+        return None
 
-async def agent_heartbeat(agent_id):
-    agents_collection.update_one(
-        {"agent_id": agent_id},
-        {"$set": {"last_heartbeat": datetime.now(), "status": "available"}}
-    )
-    await emit_agent_update(agent_id)
-
-async def update_agent_status(agent_id, status):
-    agents_collection.update_one(
-        {"agent_id": agent_id},
-        {"$set": {"status": status}}
-    )
-    await emit_agent_update(agent_id)
-
-async def get_agent_url(agent_id):
+def get_agent_by_id(agent_id: str) -> Optional[SerializedAgent]:
     agent = agents_collection.find_one({"agent_id": agent_id})
-    return agent.get("public_url") if agent else None
+    if agent:
+        return serialize_agent(agent)
+    return None
 
-async def find_available_agent():
-    """Assign an available agent to a bot."""
-    agent = agents_collection.find_one({"last_heartbeat": {"$gt": datetime.now() - timedelta(seconds=HEARTBEAT_INTERVAL * 2)}})
-    return agent
-
-async def monitor_agents():
-    while True:
-        now = datetime.now()
-        cutoff = now - timedelta(seconds=2 * HEARTBEAT_INTERVAL)
-        agents_collection.update_many(
-            {"last_heartbeat": {"$lt": cutoff}},
-            {"$set": {"status": "stopped"}}
+async def update_agent(agent_id: str, data: UpdateAgent) -> Optional[SerializedAgent]:
+    try:
+        payload = data.dict(exclude_unset=True)
+        agents_collection.update_one(
+            {"agent_id": agent_id},
+            {"$set": payload}
         )
+        agent = agents_collection.find_one({"agent_id": agent_id})
+        if not agent:
+            return None
+        serialized_agent = serialize_agent(agent)
+        await emit_agent_update(serialized_agent)
+        return serialized_agent
+    except Exception as e:
+        print(f"Error updating agent {agent_id}: {e}")
+        return None
+
+def list_agents() -> list[SerializedAgent]:
+    try:
+        agents = list(agents_collection.find())
+        return [serialize_agent(agent) for agent in agents]
+    except Exception as e:
+        print(f"Error listing agents: {e}")
+        return []
+
+def list_available_agents() -> list[SerializedAgent]:
+    try:
+        agents = list(agents_collection.find({"status": AgentStatus.AVAILABLE.value}))
+        return [serialize_agent(agent) for agent in agents]
+    except Exception as e:
+        print(f"Error listing available agents: {e}")
+        return []
+
+async def agent_heartbeat(agent_id: str, status: AgentStatus) -> Optional[SerializedAgent]:
+    return await update_agent(agent_id, UpdateAgent(last_heartbeat=datetime.now(), status=status))
+
+
+async def update_agent_status(agent_id: str, status: AgentStatus) -> Optional[SerializedAgent]:
+    return await update_agent(agent_id, UpdateAgent(status=status.value))
+
+async def find_available_agent() -> Optional[SerializedAgent]:
+    try:
+        cutoff = datetime.now() - timedelta(seconds=HEARTBEAT_INTERVAL * 2)
+        agent = agents_collection.find_one({
+            "last_heartbeat": {"$gt": cutoff},
+            "status": AgentStatus.AVAILABLE.value
+        })
+        if agent:
+            return serialize_agent(agent)
+        return None
+    except Exception as e:
+        print(f"Error finding available agent: {e}")
+        return None
+
+async def monitor_agents() -> NoReturn:
+    while True:
+        try:
+            now = datetime.now()
+            cutoff = now - timedelta(seconds=2 * HEARTBEAT_INTERVAL)
+            agents_collection.update_many(
+                {"last_heartbeat": {"$lt": cutoff}},
+                {"$set": {"status": AgentStatus.OFFLINE.value}}
+            )
+        except Exception as e:
+            print(f"Error monitoring agents: {e}")
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
-# INCOMING EVENTS
-class AgentLogEvent(BaseModel):
-    agent_id: str
-    log: str
-
-@sio.on('agent_log', namespace='/agent')
-async def agent_log(sid, data: AgentLogEvent):
-    agent_id = data.get('agent_id')
-    log_message = data.get('log')
-    print(f"AGENT Log received for agent {agent_id}: {log_message}")
+async def create_agent_log(agent_id: str, log_message: str) -> None:
     await emit_agent_log(agent_id, log_message)
 
-# UI EVNET HANDLERS
-class AgentUpdateEvent(BaseModel):
+
+# EVENT HANDLERS
+
+@sio.on('agent_log', namespace='/agent')
+async def handle_agent_log(sid: str, data: dict[str, Any]) -> None:
+    print(f"Received 'agent_log' event from SID {sid}: {data}")
+    try:
+        event = AgentLogEvent(**data)
+        await create_agent_log(event.agent_id, event.log)
+    except Exception as e:
+        print(f"Invalid log data: {e}")
+
+@sio.on('agent_heartbeat', namespace='/agent')
+async def handle_agent_heartbeat(sid: str, data: dict[str, Any]) -> None:
+    print(f"Received 'agent_heartbeat' event from SID {sid}: {data}")
+    try:
+        agent_id: Any = data.get('agent_id')
+        status: Any = data.get('status')
+
+        await agent_heartbeat(agent_id, status)
+    except Exception as e:
+        print(f"Invalid heartbeat data: {e}")
+
+class AgentStatusUpdate(BaseModel):
     agent_id: str
-    status: Optional[str] = None
-    last_heartbeat: Optional[str] = None
-    resources: Optional[dict] = None
-    public_url: Optional[str] = None
+    status: AgentStatus
 
-async def emit_agent_update(agent_id: str):
-    agent = agents_collection.find_one({"agent_id": agent_id})
-    if not agent:
-        print(f"Agent {agent_id} not found")
-        return
+@sio.on('agent_status_update', namespace='/agent')
+async def handle_agent_status_update(sid: str, data: dict[str, Any]) -> None:
+    print(f"Received 'agent_status_update' event from SID {sid}: {data}")
+    try:
+        event = AgentStatusUpdate(**data)
+        await update_agent_status(event.agent_id, event.status)
+    except Exception as e:
+        print(f"Error handling agent status update: {e}")
 
-    serialized_agent = serialize_agent(agent)
-    print(f"EMITTING AGENT UPDATE")
-    await sio.emit('agent_updated', serialized_agent, namespace='/ui')
 
-async def emit_agent_log(agent_id: str, log_message: str):
-    print(f"EMITTING AGENT LOG")
-    await sio.emit('agent_log_created', {"agent_id": agent_id, "log": log_message}, namespace='/ui')
+# EVENT EMITTERS
+
+async def emit_agent_update(agent: SerializedAgent) -> None:
+    print(f"Emitting 'agent_updated' event: {agent}")
+    data = jsonable_encoder(agent)
+    await sio.emit('agent_updated', data, namespace='/ui')
+
+async def emit_agent_log(agent_id: str, log_message: str) -> None:
+    print(f"Emitting 'agent_log_created' event for agent {agent_id}: {log_message}")
+    data = jsonable_encoder({
+        "agent_id": agent_id,
+        "log": log_message,
+        "timestamp": datetime.now()
+    })
+    await sio.emit('agent_log_created', data, namespace='/ui')
