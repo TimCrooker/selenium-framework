@@ -97,8 +97,8 @@ async def start_bot_run(bot_id: str, run_id: str) -> bool:
         "run_id": run_id
     }
 
-    # set the run status to starting
-    await update_run(run_id, UpdateRun(status="starting", agent_id=agent_id))
+    # Assign the run to the agent (it may not take it right away)
+    await update_run(run_id, UpdateRun(agent_id=agent_id))
 
     async with httpx.AsyncClient() as client:
         try:

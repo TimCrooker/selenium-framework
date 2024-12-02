@@ -100,6 +100,7 @@ async def update_run_status(run_id: str, status: RunStatus) -> SerializedRun:
                 event_type="info",
                 message="Run has started"
             ))
+            update_data.start_time = datetime.now()
         elif status in [RunStatus.COMPLETED, RunStatus.ERROR]:
             update_data.end_time = datetime.now()
 
