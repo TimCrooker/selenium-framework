@@ -1,7 +1,5 @@
-import asyncio
-
 from datetime import datetime, timedelta
-from typing import Any, NoReturn, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 from fastapi.encoders import jsonable_encoder
@@ -10,10 +8,14 @@ from ..models import AgentLogEvent, AgentStatus, CreateAgent, SerializedAgent, U
 from ..utils.socket_manager import sio
 from ..utils.config import HEARTBEAT_INTERVAL
 from ..database import agents_collection
+from .run_service import list_runs_by_agent
 import logging
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+
+scheduler = AsyncIOScheduler()
 
 def serialize_agent(agent: dict[str, Any]) -> SerializedAgent:
     return SerializedAgent(**agent)
@@ -99,18 +101,17 @@ async def find_available_agent() -> Optional[SerializedAgent]:
         print(f"Error finding available agent: {e}")
         return None
 
-async def monitor_agents() -> NoReturn:
-    while True:
-        try:
-            now = datetime.now()
-            cutoff = now - timedelta(seconds=2 * HEARTBEAT_INTERVAL)
-            agents_collection.update_many(
-                {"last_heartbeat": {"$lt": cutoff}},
-                {"$set": {"status": AgentStatus.OFFLINE.value}}
-            )
-        except Exception as e:
-            print(f"Error monitoring agents: {e}")
-        await asyncio.sleep(HEARTBEAT_INTERVAL)
+async def monitor_agents() -> None:
+    try:
+        now = datetime.now()
+        cutoff = now - timedelta(seconds=5 * HEARTBEAT_INTERVAL)
+        agents_collection.update_many(
+            {"last_heartbeat": {"$lt": cutoff}},
+            {"$set": {"status": AgentStatus.OFFLINE.value}}
+        )
+        print(f"[Monitor] Checked agents at {now.isoformat()}")
+    except Exception as e:
+        print(f"Error monitoring agents: {e}")
 
 async def create_agent_log(agent_id: str, log_message: str) -> None:
     await emit_agent_log(agent_id, log_message)
@@ -120,7 +121,6 @@ async def create_agent_log(agent_id: str, log_message: str) -> None:
 
 @sio.on('agent_log', namespace='/agent')
 async def handle_agent_log(sid: str, data: dict[str, Any]) -> None:
-    print(f"Received 'agent_log' event from SID {sid}: {data}")
     try:
         event = AgentLogEvent(**data)
         await create_agent_log(event.agent_id, event.log)
@@ -129,7 +129,6 @@ async def handle_agent_log(sid: str, data: dict[str, Any]) -> None:
 
 @sio.on('agent_heartbeat', namespace='/agent')
 async def handle_agent_heartbeat(sid: str, data: dict[str, Any]) -> None:
-    print(f"Received 'agent_heartbeat' event from SID {sid}: {data}")
     try:
         agent_id: Any = data.get('agent_id')
         status: Any = data.get('status')
@@ -144,7 +143,6 @@ class AgentStatusUpdate(BaseModel):
 
 @sio.on('agent_status_update', namespace='/agent')
 async def handle_agent_status_update(sid: str, data: dict[str, Any]) -> None:
-    print(f"Received 'agent_status_update' event from SID {sid}: {data}")
     try:
         event = AgentStatusUpdate(**data)
         await update_agent_status(event.agent_id, event.status)
@@ -155,12 +153,10 @@ async def handle_agent_status_update(sid: str, data: dict[str, Any]) -> None:
 # EVENT EMITTERS
 
 async def emit_agent_update(agent: SerializedAgent) -> None:
-    print(f"Emitting 'agent_updated' event: {agent}")
     data = jsonable_encoder(agent)
     await sio.emit('agent_updated', data, namespace='/ui')
 
 async def emit_agent_log(agent_id: str, log_message: str) -> None:
-    print(f"Emitting 'agent_log_created' event for agent {agent_id}: {log_message}")
     data = jsonable_encoder({
         "agent_id": agent_id,
         "log": log_message,

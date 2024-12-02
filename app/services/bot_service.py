@@ -119,16 +119,13 @@ def get_bot_runs(bot_id: str) -> list[SerializedRun]:
 # EVENT EMITTERS
 
 async def emit_bot_created(bot: SerializedBot) -> None:
-    print(f"Emitting 'bot_created' event: {bot}")
     data = jsonable_encoder(bot)
     await sio.emit('bot_created', data, namespace='/ui')
 
 async def emit_bot_deleted(bot_id: str) -> None:
-    print(f"Emitting 'bot_deleted' event for bot_id: {bot_id}")
     await sio.emit('bot_deleted', {"bot_id": bot_id}, namespace='/ui')
 
 async def emit_bot_updated(bot: SerializedBot) -> None:
-    print(f"Emitting 'bot_updated' event: {bot}")
     data = jsonable_encoder(bot)
     await sio.emit('bot_updated', data, namespace='/ui')
 

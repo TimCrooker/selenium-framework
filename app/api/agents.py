@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
-from app.models import AgentStatusUpdate, CreateAgent, SerializedAgent
+from app.models import AgentStatus, AgentStatusUpdate, CreateAgent, SerializedAgent, SerializedRun
 from app.services.agent_service import agent_heartbeat, create_agent, get_agent_by_id, list_agents, list_available_agents, update_agent_status
+from app.services.run_service import list_runs_by_agent
 
 router = APIRouter()
 
@@ -39,10 +40,17 @@ async def get_agent(agent_id: str) -> SerializedAgent:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting agent: {e}")
 
+@router.get("/{agent_id}/runs")
+async def get_agent_runs(agent_id: str) -> list[SerializedRun]:
+    try:
+        return list_runs_by_agent(agent_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting runs for agent {agent_id}: {e}")
+
 @router.post("/{agent_id}/heartbeat")
 async def heartbeat(agent_id: str) -> SerializedAgent:
     try:
-        updatedAgent = await agent_heartbeat(agent_id)
+        updatedAgent = await agent_heartbeat(agent_id, status=AgentStatus.AVAILABLE)
         if not updatedAgent:
             raise HTTPException(status_code=404, detail="Agent heartbeat failed")
         return updatedAgent

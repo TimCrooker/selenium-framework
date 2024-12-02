@@ -1,22 +1,27 @@
-# main.py
-import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 from app.api import agents, bots, runs
 from app.utils.socket_manager import sio_app
 from .services.agent_service import monitor_agents
 from .services.scheduler_service import schedule_bot_runs, monitor_queued_runs
+from .services.run_service import cleanup_stuck_runs
 
 # Create a FastAPI app
 app = FastAPI()
 
 # Start the agent monitoring task
+scheduler = AsyncIOScheduler()
+
 @app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(monitor_agents())
-    asyncio.create_task(schedule_bot_runs())
-    asyncio.create_task(monitor_queued_runs())
+async def startup_event() -> None:
+    scheduler.add_job(monitor_agents, CronTrigger.from_crontab('* * * * *'))  # Every minute
+    scheduler.add_job(schedule_bot_runs, CronTrigger.from_crontab('* * * * *'))  # Every minute
+    scheduler.add_job(monitor_queued_runs, CronTrigger.from_crontab('* * * * *'))  # Every minute
+    scheduler.add_job(cleanup_stuck_runs, CronTrigger.from_crontab('* * * * *'))  # Every 10 minutes
+    scheduler.start()
 
 # Add CORS middleware to allow cross-origin requests
 app.add_middleware(

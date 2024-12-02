@@ -38,7 +38,6 @@ def list_run_events(run_id: str) -> list[SerializedRunEvent]:
 
 @sio.on("run_event", namespace='/agent')
 async def handle_run_event(sid: str, data: dict[str, Any]) -> None:
-    print(f"Received 'run_event' event from SID {sid}: {data}")
     try:
         event_data = CreateRunEvent(**data)
         await create_run_event(event_data)
@@ -48,6 +47,5 @@ async def handle_run_event(sid: str, data: dict[str, Any]) -> None:
 # EVENT EMITTER
 
 async def emit_run_event(run_event: SerializedRunEvent) -> None:
-    print(f"Emitting 'run_event' event: {run_event}")
     data = jsonable_encoder(run_event)
     await sio.emit("run_event", data, namespace='/ui')

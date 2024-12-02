@@ -38,7 +38,6 @@ def list_run_logs(run_id: str) -> list[SerializedRunLog]:
 
 @sio.on("run_log", namespace='/agent')
 async def handle_run_log_event(sid: str, data: dict[str, Any]) -> None:
-    print(f"Received 'run_log' event from SID {sid}: {data}")
     try:
         log_data = CreateRunLog(**data)
         await create_run_log(log_data)
@@ -48,6 +47,5 @@ async def handle_run_log_event(sid: str, data: dict[str, Any]) -> None:
 # EVENT EMITTERS
 
 async def emit_run_log(run_log: SerializedRunLog) -> None:
-    print(f"Emitting 'run_log' event: {run_log}")
     data = jsonable_encoder(run_log)
     await sio.emit("run_log", data, namespace='/ui')
