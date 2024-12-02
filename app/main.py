@@ -8,6 +8,7 @@ from app.utils.socket_manager import sio_app
 from .services.agent_service import monitor_agents
 from .services.scheduler_service import schedule_bot_runs, monitor_queued_runs
 from .services.run_service import cleanup_stuck_runs
+from app.database import agents_collection, runs_collection, run_events_collection, run_logs_collection
 
 # Create a FastAPI app
 app = FastAPI()
@@ -17,11 +18,18 @@ scheduler = AsyncIOScheduler()
 
 @app.on_event("startup")
 async def startup_event() -> None:
+    await agents_collection.create_index("agent_id", unique=True)
+    await runs_collection.create_index("bot_id", unique=False)
+    await run_events_collection.create_index("run_id", unique=False)
+    await run_logs_collection.create_index("run_id", unique=False)
+
     scheduler.add_job(monitor_agents, CronTrigger.from_crontab('* * * * *'))  # Every minute
     scheduler.add_job(schedule_bot_runs, CronTrigger.from_crontab('* * * * *'))  # Every minute
     scheduler.add_job(monitor_queued_runs, CronTrigger.from_crontab('* * * * *'))  # Every minute
-    scheduler.add_job(cleanup_stuck_runs, CronTrigger.from_crontab('* * * * *'))  # Every 10 minutes
+    scheduler.add_job(cleanup_stuck_runs, CronTrigger.from_crontab('* * * * *'))  # Every minute
     scheduler.start()
+
+
 
 # Add CORS middleware to allow cross-origin requests
 app.add_middleware(

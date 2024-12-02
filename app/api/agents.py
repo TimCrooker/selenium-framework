@@ -8,7 +8,7 @@ router = APIRouter()
 @router.get("/")
 async def get_agents() -> list[SerializedAgent]:
     try:
-        return list_agents()
+        return await list_agents()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting agents: {e}")
 
@@ -26,14 +26,14 @@ async def register(agent: CreateAgent) -> SerializedAgent:
 @router.get("/available")
 async def available_agents() -> list[SerializedAgent]:
     try:
-        return list_available_agents()
+        return await list_available_agents()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting available agents: {e}")
 
 @router.get("/{agent_id}")
 async def get_agent(agent_id: str) -> SerializedAgent:
     try:
-        agent = get_agent_by_id(agent_id)
+        agent = await get_agent_by_id(agent_id)
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
         return agent
@@ -43,7 +43,7 @@ async def get_agent(agent_id: str) -> SerializedAgent:
 @router.get("/{agent_id}/runs")
 async def get_agent_runs(agent_id: str) -> list[SerializedRun]:
     try:
-        return list_runs_by_agent(agent_id)
+        return await list_runs_by_agent(agent_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting runs for agent {agent_id}: {e}")
 

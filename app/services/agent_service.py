@@ -8,14 +8,6 @@ from ..models import AgentLogEvent, AgentStatus, CreateAgent, SerializedAgent, U
 from ..utils.socket_manager import sio
 from ..utils.config import HEARTBEAT_INTERVAL
 from ..database import agents_collection
-from .run_service import list_runs_by_agent
-import logging
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-
-scheduler = AsyncIOScheduler()
 
 def serialize_agent(agent: dict[str, Any]) -> SerializedAgent:
     return SerializedAgent(**agent)
@@ -24,12 +16,12 @@ async def create_agent(agent_data: CreateAgent) -> Optional[SerializedAgent]:
     try:
         payload = agent_data.dict()
         payload["last_heartbeat"] = datetime.now()
-        agents_collection.update_one(
+        await agents_collection.update_one(
             {"agent_id": agent_data.agent_id},
             {"$set": payload},
             upsert=True
         )
-        agent = agents_collection.find_one({"agent_id": agent_data.agent_id})
+        agent = await agents_collection.find_one({"agent_id": agent_data.agent_id})
 
         if not agent:
             raise Exception("Error registering agent")
@@ -41,8 +33,8 @@ async def create_agent(agent_data: CreateAgent) -> Optional[SerializedAgent]:
         print(f"Error registering agent: {e}")
         return None
 
-def get_agent_by_id(agent_id: str) -> Optional[SerializedAgent]:
-    agent = agents_collection.find_one({"agent_id": agent_id})
+async def get_agent_by_id(agent_id: str) -> Optional[SerializedAgent]:
+    agent = await agents_collection.find_one({"agent_id": agent_id})
     if agent:
         return serialize_agent(agent)
     return None
@@ -50,11 +42,11 @@ def get_agent_by_id(agent_id: str) -> Optional[SerializedAgent]:
 async def update_agent(agent_id: str, data: UpdateAgent) -> Optional[SerializedAgent]:
     try:
         payload = data.dict(exclude_unset=True)
-        agents_collection.update_one(
+        await agents_collection.update_one(
             {"agent_id": agent_id},
             {"$set": payload}
         )
-        agent = agents_collection.find_one({"agent_id": agent_id})
+        agent = await agents_collection.find_one({"agent_id": agent_id})
         if not agent:
             return None
         serialized_agent = serialize_agent(agent)
@@ -64,17 +56,19 @@ async def update_agent(agent_id: str, data: UpdateAgent) -> Optional[SerializedA
         print(f"Error updating agent {agent_id}: {e}")
         return None
 
-def list_agents() -> list[SerializedAgent]:
+async def list_agents() -> list[SerializedAgent]:
     try:
-        agents = list(agents_collection.find())
+        agents_cursor = agents_collection.find()
+        agents = await agents_cursor.to_list(length=None)
         return [serialize_agent(agent) for agent in agents]
     except Exception as e:
         print(f"Error listing agents: {e}")
         return []
 
-def list_available_agents() -> list[SerializedAgent]:
+async def list_available_agents() -> list[SerializedAgent]:
     try:
-        agents = list(agents_collection.find({"status": AgentStatus.AVAILABLE.value}))
+        agents_cursor = agents_collection.find({"status": AgentStatus.AVAILABLE.value})
+        agents = await agents_cursor.to_list(length=None)
         return [serialize_agent(agent) for agent in agents]
     except Exception as e:
         print(f"Error listing available agents: {e}")
@@ -90,7 +84,7 @@ async def update_agent_status(agent_id: str, status: AgentStatus) -> Optional[Se
 async def find_available_agent() -> Optional[SerializedAgent]:
     try:
         cutoff = datetime.now() - timedelta(seconds=HEARTBEAT_INTERVAL * 2)
-        agent = agents_collection.find_one({
+        agent = await agents_collection.find_one({
             "last_heartbeat": {"$gt": cutoff},
             "status": AgentStatus.AVAILABLE.value
         })
@@ -105,7 +99,7 @@ async def monitor_agents() -> None:
     try:
         now = datetime.now()
         cutoff = now - timedelta(seconds=5 * HEARTBEAT_INTERVAL)
-        agents_collection.update_many(
+        await agents_collection.update_many(
             {"last_heartbeat": {"$lt": cutoff}},
             {"$set": {"status": AgentStatus.OFFLINE.value}}
         )

@@ -9,23 +9,23 @@ from app.services.run_service import get_run_by_id, list_runs, update_run_status
 router = APIRouter()
 
 @router.get("/", response_model=list[SerializedRun])
-def get_runs() -> list[SerializedRun]:
+async def get_runs() -> list[SerializedRun]:
     try:
-        return list_runs()
+        return await list_runs()
     except Exception as e:
         raise e
 
 @router.get("/{run_id}")
 async def get_run(run_id: str) -> SerializedRun:
     try:
-        return get_run_by_id(run_id)
+        return await get_run_by_id(run_id)
     except Exception as e:
         raise e
 
 @router.get("/{run_id}/logs")
 async def get_run_logs(run_id: str) -> list[SerializedRunLog]:
     try:
-        return list_run_logs(run_id)
+        return await list_run_logs(run_id)
     except Exception as e:
         raise e
 
@@ -40,7 +40,7 @@ async def add_run_log(run_id: str, data: CreateRunLog) -> SerializedRunLog:
 @router.get("/{run_id}/events")
 async def get_run_events(run_id: str) -> list[SerializedRunEvent]:
     try:
-        return list_run_events(run_id)
+        return await list_run_events(run_id)
     except Exception as e:
         raise e
 

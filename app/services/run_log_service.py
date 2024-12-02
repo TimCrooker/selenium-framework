@@ -14,8 +14,8 @@ async def create_run_log(data: CreateRunLog) -> SerializedRunLog:
     try:
         payload = data.dict()
         payload["timestamp"] = datetime.now()
-        result = run_logs_collection.insert_one(payload)
-        log = run_logs_collection.find_one({"_id": result.inserted_id})
+        result = await run_logs_collection.insert_one(payload)
+        log = await run_logs_collection.find_one({"_id": result.inserted_id})
         if not log:
             raise Exception("Error creating run log")
 
@@ -26,12 +26,13 @@ async def create_run_log(data: CreateRunLog) -> SerializedRunLog:
         # Handle exception
         raise e
 
-def list_run_logs(run_id: str) -> list[SerializedRunLog]:
+async def list_run_logs(run_id: str) -> list[SerializedRunLog]:
     try:
-        logs = run_logs_collection.find({"run_id": run_id})
+        logs_cursor = run_logs_collection.find({"run_id": run_id})
+        logs = await logs_cursor.to_list(length=None)
         return [serialize_run_log(log) for log in logs]
     except Exception as e:
-        # Handle exception
+        print(f"Error listing run logs: {e}")
         raise e
 
 # EVENT HANDLERS

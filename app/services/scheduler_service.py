@@ -1,4 +1,3 @@
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from bson import ObjectId
 from croniter import croniter, CroniterBadCronError
 from datetime import datetime
@@ -8,13 +7,12 @@ from ..database import bots_collection, runs_collection
 from .run_service import create_run, serialize_run, update_run
 from .bot_service import serialize_bot, start_bot_run
 
-scheduler = AsyncIOScheduler()
-
 async def schedule_bot_runs() -> None:
     now = datetime.now()
     print(f"[Scheduler] Checking scheduled bots at {now.isoformat()}")
     try:
-        bots = list(bots_collection.find({"schedule": {"$ne": None}}))
+        bots_cursor = bots_collection.find({"schedule": {"$ne": None}})
+        bots = await bots_cursor.to_list(length=None)
         for bot in bots:
             serialized_bot = serialize_bot(bot)
             bot_id = serialized_bot.id
@@ -25,7 +23,7 @@ async def schedule_bot_runs() -> None:
                 print(f"[Scheduler] Bot {bot_id} scheduled to run at {next_run_time.isoformat()} with CRON {cron}")
 
                 # Check if there are any existing scheduled runs for this bot
-                existing_scheduled_runs = runs_collection.find_one({"bot_id": bot_id, "status": RunStatus.SCHEDULED, "start_time": next_run_time})
+                existing_scheduled_runs = await runs_collection.find_one({"bot_id": bot_id, "status": RunStatus.SCHEDULED, "start_time": next_run_time})
                 if existing_scheduled_runs:
                     print(f"[Scheduler] Existing scheduled run found for bot {bot_id}, skipping scheduling: {existing_scheduled_runs}")
                     continue
@@ -45,7 +43,8 @@ async def monitor_queued_runs() -> None:
     print(f"[Monitor] Checking queued runs at {now.isoformat()}")
     try:
         # Find all scheduled runs where the start time has passed
-        scheduled_runs = list(runs_collection.find({"status": RunStatus.SCHEDULED, "start_time": {"$lte": now}}))
+        scheduled_runs_cursor = runs_collection.find({"status": RunStatus.SCHEDULED, "start_time": {"$lte": now}})
+        scheduled_runs = await scheduled_runs_cursor.to_list(length=None)
         print(f"[Monitor] Found {len(scheduled_runs)} scheduled runs")
         for run in scheduled_runs:
             serialized_run = serialize_run(run)
@@ -57,14 +56,15 @@ async def monitor_queued_runs() -> None:
                 print(f"[Monitor] Unexpected error while queuing run {run_id}: {e}")
 
         # Find all queued runs and attempt to start them
-        queued_runs = list(runs_collection.find({"status": RunStatus.QUEUED}).sort("start_time", 1))
+        queued_runs_cursor = runs_collection.find({"status": RunStatus.QUEUED}).sort("start_time", 1)
+        queued_runs = await queued_runs_cursor.to_list(length=None)
         print(f"[Monitor] Found {len(queued_runs)} queued runs")
         for run in queued_runs:
             serialized_run = serialize_run(run)
             bot_id = serialized_run.bot_id
             run_id = serialized_run.id
             try:
-                bot = bots_collection.find_one({"_id": ObjectId(bot_id)})
+                bot = await bots_collection.find_one({"_id": ObjectId(bot_id)})
                 if not bot:
                     print(f"[Monitor] Bot {bot_id} not found for queued run {run_id}")
                     continue

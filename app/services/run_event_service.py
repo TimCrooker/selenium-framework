@@ -14,8 +14,8 @@ async def create_run_event(data: CreateRunEvent) -> SerializedRunEvent:
     try:
         payload = data.dict()
         payload["timestamp"] = datetime.now()
-        result = run_events_collection.insert_one(payload)
-        event = run_events_collection.find_one({"_id": result.inserted_id})
+        result = await run_events_collection.insert_one(payload)
+        event = await run_events_collection.find_one({"_id": result.inserted_id})
         if not event:
             raise Exception("Error creating run event")
 
@@ -26,12 +26,13 @@ async def create_run_event(data: CreateRunEvent) -> SerializedRunEvent:
         # Handle exception
         raise e
 
-def list_run_events(run_id: str) -> list[SerializedRunEvent]:
+async def list_run_events(run_id: str) -> list[SerializedRunEvent]:
     try:
-        events = run_events_collection.find({"run_id": run_id})
+        events_cursor = run_events_collection.find({"run_id": run_id})
+        events = await events_cursor.to_list(length=None)
         return [serialize_run_event(event) for event in events]
     except Exception as e:
-        # Handle exception
+        print(f"Error listing run events: {e}")
         raise e
 
 # EVENT HANDLERS
